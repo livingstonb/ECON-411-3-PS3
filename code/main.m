@@ -161,7 +161,7 @@ function [b,K_t] = simulate(p,grids,kpol)
     % Time periods to simulate
     T = p.sim_tburn + p.sim_T;
     
-    rng(64897);
+    rng(1324);
     
     % Aggregate productivity: iz=1 bad, iz=2 good
     zrand = rand(T,1);
@@ -170,7 +170,7 @@ function [b,K_t] = simulate(p,grids,kpol)
     % Initial capital distribution
 %     k = linspace(1,p.kmax,p.sim_nHH)';
 %     k = p.kmin + (p.kmax-p.kmin)*rand(p.sim_nHH,1);
-    k = ones(p.sim_nHH,1) * 45;
+    k = ones(p.sim_nHH,1) * 35;
     
     % Initial employment status
     employed = rand(p.sim_nHH,1) < p.L(iz0);
@@ -212,7 +212,7 @@ function [b,K_t] = simulate(p,grids,kpol)
         k = max(k,p.kmin);
         k = min(k,p.kmax);
         
-        % Draw idiosyncratic shocks -- do I need to switch the order?
+        % Draw idiosyncratic shocks
         lrand = rand(p.sim_nHH,1);
         [~,l] = max(lrand<=pi_l_trans{iz0,iz1}(l,:),[],2);
         employed = (l==1);

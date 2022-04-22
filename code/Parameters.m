@@ -26,7 +26,7 @@ classdef Parameters
         dims
         
         maxiters = 1e4
-        tol = 1e-8
+        tol = 1e-7
         del_update = 0.4
                 
         % Simulation
