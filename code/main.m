@@ -83,7 +83,7 @@ function kpol_euler = update_policy(p,grids,kpol,lom_K)
     Kpvec = reshape(Kpvec,[],p.nz);
     
     % Prices r(K,z) and w(K,z)
-    % dim(r) = dim(w) = (1,nk,1,nz)
+    % dim(r) = dim(w) = (1,nK,1,nz)
     [r, w] = compute_prices(p, grids.K');
     
     % Prices r(K',z') and w(K',z')
@@ -107,9 +107,8 @@ function kpol_euler = update_policy(p,grids,kpol,lom_K)
     kpp = zeros([p.nk*p.nK*p.nl*p.nz,p.nl,p.nz]);
     for il=1:p.nl % l'
         for iz=1:p.nz % z'
-            kp_lz = kpol(:,:,il,iz);
             kinterp = griddedInterpolant(...
-                {grids.k,grids.K},kp_lz,'spline');
+                {grids.k,grids.K},kpol(:,:,il,iz),'spline');
             kpp(:,il,iz) = kinterp(kpol(:),Kpvec(:));
         end
     end
@@ -117,10 +116,11 @@ function kpol_euler = update_policy(p,grids,kpol,lom_K)
     % Construct c' vector
     kpp = reshape(kpp,[],p.nl*p.nz);
     cp = (1+rp-p.delta).*kpol(:) + wp.*lp(:)' - kpp;
+    cp = max(cp,1e-8);
     
     % Expected marginal utility
     A = kron(p.pimat,ones(p.nk*p.nK,1));
-    eMU = sum(((1+rp-p.delta)./cp) .* A, 2);
+	eMU = sum(((1+rp-p.delta)./cp) .* A, 2);
     
     % k' decision rule on LHS of Euler
     eMU = reshape(eMU,p.dims);
@@ -142,7 +142,7 @@ function [r, w] = compute_prices(p, K)
     r = reshape(r, [1,p.nK,1,p.nz]);
     
     % w(K,z), dimension (1,nK,1,nz)
-    w = p.z * (1-p.alpha) .* klratio .^(p.alpha);
+    w = p.z * (1-p.alpha) .* klratio .^(-p.alpha);
     w = reshape(w, [1,p.nK,1,p.nz]);
 end
 
@@ -161,14 +161,16 @@ function [b,K_t] = simulate(p,grids,kpol)
     % Time periods to simulate
     T = p.sim_tburn + p.sim_T;
     
-    rng(9520);
+    rng(64897);
     
     % Aggregate productivity: iz=1 bad, iz=2 good
     zrand = rand(T,1);
     iz0 = 1;
     
     % Initial capital distribution
-    k = linspace(p.kmin,p.kmax,p.sim_nHH)';
+%     k = linspace(1,p.kmax,p.sim_nHH)';
+%     k = p.kmin + (p.kmax-p.kmin)*rand(p.sim_nHH,1);
+    k = ones(p.sim_nHH,1) * 45;
     
     % Initial employment status
     employed = rand(p.sim_nHH,1) < p.L(iz0);
@@ -200,18 +202,20 @@ function [b,K_t] = simulate(p,grids,kpol)
         z_t(t) = iz0;
 
         % Update next aggregate productivity
-        iz1 = 1 + (zrand(t) < p.pi_z(1,iz0));
-                
+        iz1 = 1 + (zrand(t) > p.pi_z(iz0,1));
+        
+        Kvec = K_t(t) * ones(p.sim_nHH,1);
+        
+        % Interpolate
+        k(~employed) = kinterp{1,iz0}(k(~employed),Kvec(~employed));
+        k(employed) = kinterp{2,iz0}(k(employed),Kvec(employed));
+        k = max(k,p.kmin);
+        k = min(k,p.kmax);
+        
         % Draw idiosyncratic shocks -- do I need to switch the order?
         lrand = rand(p.sim_nHH,1);
         [~,l] = max(lrand<=pi_l_trans{iz0,iz1}(l,:),[],2);
-        
-        % Interpolate
-        Kvec = K_t(t) * ones(p.sim_nHH,1);
-        
         employed = (l==1);
-        k(~employed) = kinterp{1,iz0}(k(~employed),Kvec(~employed));
-        k(employed) = kinterp{2,iz0}(k(employed),Kvec(employed));
         
         % Update current productivity
         iz0 = iz1;
