@@ -13,14 +13,11 @@ grids.K = linspace(p.Kmin,p.Kmax,p.nK)';
 kpol0 = 0.9 * grids.k .* ones([1,p.nK,p.nl,p.nz]);
 
 % Guess capital law of motion
-lom0_K = struct();
-lom0_K.alpha = reshape([0,0],[1,1,1,2]);
-lom0_K.beta = reshape([1,1],[1,1,1,2]);
+lom0_K = [0,0;1,1];
 
 % Solve
 [kpol, lom] = iterate_lom(p,grids,kpol0,lom0_K);
 [~,K_t] = simulate(p,grids,kpol);
-
 
 % Iterate over law of motion
 function [kpol, lom_K] = iterate_lom(p,grids,kpol0,lom0_K)
@@ -31,23 +28,22 @@ function [kpol, lom_K] = iterate_lom(p,grids,kpol0,lom0_K)
         kpol = solve_policy(p,grids,kpol0,lom_K);
 
         % Simulate
-        b1 = simulate(p,grids,kpol);
+        sim_results = simulate(p,grids,kpol);
+        lom1_K = [sim_results{1}.b,sim_results{2}.b];
 
         % Check difference
-        b0 = [lom_K.alpha(:)';lom_K.beta(:)'];
-        bnorm = norm(b1(:)-b0(:),Inf);
-        delta = 0.5;
-        lom_K.alpha(1) = delta*b0(1,1) + (1-delta)*b1(1,1);
-        lom_K.alpha(2) = delta*b0(1,2) + (1-delta)*b1(1,2);
-        lom_K.beta(1) = delta*b0(2,1) + (1-delta)*b1(2,1);
-        lom_K.beta(2) = delta*b0(2,2) + (1-delta)*b1(2,2);
-        
+        bnorm = norm(lom1_K(:)-lom_K(:),Inf);
+
         if bnorm < 1e-5
             disp('Converged')
             return
         elseif mod(i,1)==0
         	fprintf('LOM iteration = %d, norm=%f\n',i,bnorm)
         end
+        
+        % Update
+        lom_delta = 0.5;
+        lom_K = lom_delta*lom1_K + (1-lom_delta)*lom_K;
     end
     error('No convergence')
 end
@@ -77,27 +73,26 @@ function kpol_euler = update_policy(p,grids,kpol,lom_K)
     % Updates the policy function
     
     % Conjectured values for K'(K,z), repeated onto k and l dimensions.
-    % dim(Kpvec) = (nk*nK*nl,nz)
+    % dim(Kpvec) = (nk,nK,nl,nz)
     Kp = capital_conjecture(lom_K,grids.K');
     Kpvec = repmat(Kp,[p.nk,1,p.nl,1]);
-    Kpvec = reshape(Kpvec,[],p.nz);
     
     % Prices r(K,z) and w(K,z)
     % dim(r) = dim(w) = (1,nK,1,nz)
     [r, w] = compute_prices(p, grids.K');
     
     % Prices r(K',z') and w(K',z')
+    % Dimensions (1,nK,1,nz)
     [rp, wp] = compute_prices(p, Kp);
     
-    % Repeat r' and w' onto (k,l,z,l') dimensions and reshape.
-    % Rows correspond with current state and columns correspond with
-    % (l',z').
-    % dim(rp) = dim(wp) = (nk*nK*nl*nz,nl*nz)
+    % Repeat along dimensions of length 1
     rp = reshape(rp,[1,p.nK,1,1,1,p.nz]);
     rp = repmat(rp,[p.nk,1,p.nl,p.nz,p.nl,1]);
-    rp = reshape(rp,[],p.nl*p.nz);
     wp = reshape(wp,[1,p.nK,1,1,1,p.nz]);
     wp = repmat(wp,[p.nk,1,p.nl,p.nz,p.nl,1]);
+  
+    % Reshape so columns are next period's shocks
+    rp = reshape(rp,[],p.nl*p.nz);
     wp = reshape(wp,[],p.nl*p.nz);
     
     % Next periods labor supply, dimension (nl,nz)
@@ -130,8 +125,8 @@ function kpol_euler = update_policy(p,grids,kpol,lom_K)
 end
 
 function Kp = capital_conjecture(lom_K, K)
-    logKp = lom_K.alpha + lom_K.beta .* log(K);
-    Kp = exp(logKp);
+    logKp =  [ones(numel(K),1), log(K(:))] * lom_K;
+    Kp = reshape(exp(logKp),[1,numel(K),1,2]);
 end
 
 function [r, w] = compute_prices(p, K)
@@ -146,95 +141,93 @@ function [r, w] = compute_prices(p, K)
     w = reshape(w, [1,p.nK,1,p.nz]);
 end
 
-function [b,K_t] = simulate(p,grids,kpol)
+function [regs,K_t] = simulate(p,grids,kpol)
+    rng(1324);
 
     % Create policy interpolants
     kinterp = cell(p.nl,p.nz);
     for il=1:p.nl % l'
         for iz=1:p.nz % z'
-            kp_lz = kpol(:,:,il,iz);
             kinterp{il,iz} = griddedInterpolant(...
-                {grids.k,grids.K},kp_lz,'spline');
+                {grids.k,grids.K},kpol(:,:,il,iz),'spline');
         end
     end
     
     % Time periods to simulate
     T = p.sim_tburn + p.sim_T;
     
-    rng(1324);
-    
-    % Aggregate productivity: iz=1 bad, iz=2 good
+    % Aggregate productivity shocks: iz=1 bad, iz=2 good
     zrand = rand(T,1);
     iz0 = 1;
     
+    % Idiosyncratic shocks
+    lrand = rand(p.sim_nHH,T);
+    
     % Initial capital distribution
-%     k = linspace(1,p.kmax,p.sim_nHH)';
-%     k = p.kmin + (p.kmax-p.kmin)*rand(p.sim_nHH,1);
     k = ones(p.sim_nHH,1) * 35;
     
     % Initial employment status
     employed = rand(p.sim_nHH,1) < p.L(iz0);
-    l = (~employed) * 1 + (employed) * 2;
+    i_employed = (~employed) * 1 + (employed) * 2;
     
     % Employment transitions conditional on agg transition
+    indices = @(k) int8((k==1)*[1,2]+(k==2)*[3,4]);
 	pi_l_trans = cell(2,2);
-%     pi_l_trans{1,1} = p.pimat([1,3],[1,3]);
-%     pi_l_trans{1,2} = p.pimat([1,3],[2,4]);
-%     pi_l_trans{2,1} = p.pimat([2,4],[1,3]);
-%     pi_l_trans{2,2} = p.pimat([2,4],[2,4]);
-
-    pi_l_trans{1,1} = p.pimat([1,2],[1,2]);
-    pi_l_trans{1,2} = p.pimat([1,2],[3,4]);
-    pi_l_trans{2,1} = p.pimat([3,4],[1,2]);
-    pi_l_trans{2,2} = p.pimat([3,4],[3,4]);
-    
-    for i=1:2
+	for i=1:2
         for j=1:2
+            pi_l_trans{i,j} = p.pimat(indices(i),indices(j));
             pi_l_trans{i,j} = pi_l_trans{i,j} ./ sum(pi_l_trans{i,j},2);
             pi_l_trans{i,j} = cumsum(pi_l_trans{i,j},2);
         end
     end
     
     K_t = zeros(T,1);
-    z_t = zeros(T,1);
+    iz_t = zeros(T,1);
     for t=1:T
         K_t(t) = mean(k);
-        z_t(t) = iz0;
+        iz_t(t) = iz0;
 
-        % Update next aggregate productivity
-        iz1 = 1 + (zrand(t) > p.pi_z(iz0,1));
-        
-        Kvec = K_t(t) * ones(p.sim_nHH,1);
-        
         % Interpolate
+        Kvec = K_t(t) * ones(p.sim_nHH,1);
         k(~employed) = kinterp{1,iz0}(k(~employed),Kvec(~employed));
         k(employed) = kinterp{2,iz0}(k(employed),Kvec(employed));
         k = max(k,p.kmin);
         k = min(k,p.kmax);
         
-        % Draw idiosyncratic shocks
-        lrand = rand(p.sim_nHH,1);
-        [~,l] = max(lrand<=pi_l_trans{iz0,iz1}(l,:),[],2);
-        employed = (l==1);
+        % Update next aggregate productivity
+        iz1 = 1 + (zrand(t) > p.pi_z(iz0,1));
+        
+        % Draw idiosyncratic shocks conditional on aggregate transition
+        [~,i_employed] = max(lrand(:,t)<=pi_l_trans{iz0,iz1}(i_employed,:),[],2);
+        employed = (i_employed==1);
         
         % Update current productivity
         iz0 = iz1;
     end
     
     K_t = K_t(p.sim_tburn+1:T);
-    z_t = z_t(p.sim_tburn+1:T);
+    iz_t = iz_t(p.sim_tburn+1:T);
 
     logKt = log(K_t);
-    
-    b = zeros(2,2);
-    for iz=[1,2]
-        condition = (z_t == iz);
-        icond = find(condition);
+    regs = cell(p.nz,1);
+    for iz=1:p.nz
+        % Regression conditional on aggregate state at time t
+        icond = find(iz_t == iz);
         icond = icond(1:end-1);
-
-        nc = numel(icond);
-        X = [ones(nc,1), logKt(icond)];
-        Y = logKt(icond+1);
-        b(:,iz) = (X'*X) \ (X'*Y);
+        regs{iz} = regress(logKt(icond),logKt(icond+1));
     end
+end
+
+function results = regress(covariates,Y)
+        X = [ones(size(covariates,1),1), covariates];
+        results = struct();
+        
+        % Estimate by least squares
+        results.b = (X'*X) \ (X'*Y);
+        
+        % Compute r2 and sigma
+        u = Y - X * results.b;
+        rss = u' * u;
+        results.r2 = 1 - rss/((Y-mean(Y))'*(Y-mean(Y)));
+        results.sigma = sqrt(results.r2 / numel(Y)-size(X,2));
 end
