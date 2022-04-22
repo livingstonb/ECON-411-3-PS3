@@ -7,7 +7,7 @@ p = Parameters();
 % Create grids for household assets and aggregate capital
 grids = struct();
 grids.k = create_grid(p.kmin,p.kmax,p.nk,p.kcurve);
-grids.K = create_grid(p.Kmin,p.Kmax,p.nK,p.Kcurve);
+grids.K = linspace(p.Kmin,p.Kmax,p.nK)';
 
 % Guess policy function k'(k,K,s,z)
 kpol0 = 0.9 * grids.k .* ones([1,p.nK,p.nl,p.nz]);
@@ -18,10 +18,12 @@ lom0_K.alpha = reshape([0,0],[1,1,1,2]);
 lom0_K.beta = reshape([1,1],[1,1,1,2]);
 
 % Solve
-iterate_lom(p,grids,kpol0,lom0_K)
+[kpol, lom] = iterate_lom(p,grids,kpol0,lom0_K);
+[~,K_t] = simulate(p,grids,kpol);
+
 
 % Iterate over law of motion
-function b = iterate_lom(p,grids,kpol0,lom0_K)
+function [kpol, lom_K] = iterate_lom(p,grids,kpol0,lom0_K)
     lom_K = lom0_K;
     
     for i=1:p.maxiters
@@ -34,17 +36,17 @@ function b = iterate_lom(p,grids,kpol0,lom0_K)
         % Check difference
         b0 = [lom_K.alpha(:)';lom_K.beta(:)'];
         bnorm = norm(b1(:)-b0(:),Inf);
-        delta = 0.99;
+        delta = 0.5;
         lom_K.alpha(1) = delta*b0(1,1) + (1-delta)*b1(1,1);
         lom_K.alpha(2) = delta*b0(1,2) + (1-delta)*b1(1,2);
         lom_K.beta(1) = delta*b0(2,1) + (1-delta)*b1(2,1);
         lom_K.beta(2) = delta*b0(2,2) + (1-delta)*b1(2,2);
         
-        if bnorm < p.tol
+        if bnorm < 1e-5
             disp('Converged')
             return
-        elseif mod(i,10)==0
-        	fprintf('Iteration = %d, norm=%f\n',i,bnorm)
+        elseif mod(i,1)==0
+        	fprintf('LOM iteration = %d, norm=%f\n',i,bnorm)
         end
     end
     error('No convergence')
@@ -62,10 +64,10 @@ function kpol = solve_policy(p,grids,kpol0,lom_K)
             + (1-p.del_update) * kpol;
         
         if knorm < p.tol
-            disp('Converged')
+            fprintf('\tConverged\n')
             return
-        elseif mod(i,50)==0
-        	fprintf('Iteration = %d, norm=%f\n',i,knorm)
+        elseif mod(i,100)==0
+        	fprintf('\tPolicy iteration = %d, norm=%f\n',i,knorm)
         end
     end
     error('No convergence')
@@ -114,15 +116,15 @@ function kpol_euler = update_policy(p,grids,kpol,lom_K)
     
     % Construct c' vector
     kpp = reshape(kpp,[],p.nl*p.nz);
-    cp = (1+rp+p.delta).*kpol(:) + wp.*lp(:)' - kpp;
+    cp = (1+rp-p.delta).*kpol(:) + wp.*lp(:)' - kpp;
     
     % Expected marginal utility
     A = kron(p.pimat,ones(p.nk*p.nK,1));
-    eMU = sum((1./cp) .* A, 2);
+    eMU = sum(((1+rp-p.delta)./cp) .* A, 2);
     
     % k' decision rule on LHS of Euler
     eMU = reshape(eMU,p.dims);
-    kpol_euler = (1+r+p.delta).*grids.k + w.*shiftdim(lp,-2) - 1./(p.beta*eMU);
+    kpol_euler = (1+r-p.delta).*grids.k + w.*shiftdim(lp,-2) - 1./(p.beta*eMU);
     kpol_euler = max(kpol_euler,p.kmin);
     kpol_euler = min(kpol_euler,p.kmax);
 end
@@ -144,7 +146,7 @@ function [r, w] = compute_prices(p, K)
     w = reshape(w, [1,p.nK,1,p.nz]);
 end
 
-function b = simulate(p,grids,kpol)
+function [b,K_t] = simulate(p,grids,kpol)
 
     % Create policy interpolants
     kinterp = cell(p.nl,p.nz);
@@ -169,15 +171,20 @@ function b = simulate(p,grids,kpol)
     k = linspace(p.kmin,p.kmax,p.sim_nHH)';
     
     % Initial employment status
-    employed = rand(p.sim_nHH,1) < p.L(iz);
-    l = (employed) * 1 + (~employed) * 2;
+    employed = rand(p.sim_nHH,1) < p.L(iz0);
+    l = (~employed) * 1 + (employed) * 2;
     
     % Employment transitions conditional on agg transition
 	pi_l_trans = cell(2,2);
-    pi_l_trans{1,1} = p.pimat([1,3],[1,3]);
-    pi_l_trans{1,2} = p.pimat([1,3],[2,4]);
-    pi_l_trans{2,1} = p.pimat([2,4],[1,3]);
-    pi_l_trans{2,2} = p.pimat([2,4],[2,4]);
+%     pi_l_trans{1,1} = p.pimat([1,3],[1,3]);
+%     pi_l_trans{1,2} = p.pimat([1,3],[2,4]);
+%     pi_l_trans{2,1} = p.pimat([2,4],[1,3]);
+%     pi_l_trans{2,2} = p.pimat([2,4],[2,4]);
+
+    pi_l_trans{1,1} = p.pimat([1,2],[1,2]);
+    pi_l_trans{1,2} = p.pimat([1,2],[3,4]);
+    pi_l_trans{2,1} = p.pimat([3,4],[1,2]);
+    pi_l_trans{2,2} = p.pimat([3,4],[3,4]);
     
     for i=1:2
         for j=1:2
@@ -195,9 +202,9 @@ function b = simulate(p,grids,kpol)
         % Update next aggregate productivity
         iz1 = 1 + (zrand(t) < p.pi_z(1,iz0));
                 
-        % Draw idiosyncratic shocks
+        % Draw idiosyncratic shocks -- do I need to switch the order?
         lrand = rand(p.sim_nHH,1);
-        [~,l] = min(lrand>pi_l_trans{iz0,iz1}(l,:),[],2);
+        [~,l] = max(lrand<=pi_l_trans{iz0,iz1}(l,:),[],2);
         
         % Interpolate
         Kvec = K_t(t) * ones(p.sim_nHH,1);
