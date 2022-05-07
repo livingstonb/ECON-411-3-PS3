@@ -17,7 +17,29 @@ lom0_K = [0,0;1,1];
 
 % Solve
 [kpol, lom] = iterate_lom(p,grids,kpol0,lom0_K);
-[~,K_t] = simulate(p,grids,kpol);
+[~,K_t,iz_t] = simulate(p,grids,kpol);
+
+% Compute conjectured path for capital stock
+T = numel(K_t);
+Kapprox = zeros(numel(K_t),1);
+Kapprox(1) = K_t(1);
+for it = 1:T-1
+     Kp = reshape(capital_conjecture(lom, Kapprox(it)),[2,1]);
+     Kapprox(it+1) = Kp(iz_t(it));
+end
+
+% Capital time series
+plot(1:numel(K_t),K_t)
+hold on
+plot(1:numel(K_t),Kapprox)
+hold off
+ylabel("K")
+xlabel("t")
+legend("K_t, simulated","K_t, approximated from LoM")
+set(gcf,'color','w');
+
+% Print results
+
 
 % Iterate over law of motion
 function [kpol, lom_K] = iterate_lom(p,grids,kpol0,lom0_K)
@@ -141,7 +163,7 @@ function [r, w] = compute_prices(p, K)
     w = reshape(w, [1,p.nK,1,p.nz]);
 end
 
-function [regs,K_t] = simulate(p,grids,kpol)
+function [regs,K_t,iz_t] = simulate(p,grids,kpol)
     rng(1324);
 
     % Create policy interpolants
