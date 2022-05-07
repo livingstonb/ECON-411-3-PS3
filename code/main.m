@@ -16,7 +16,7 @@ kpol0 = 0.9 * grids.k .* ones([1,p.nK,p.nl,p.nz]);
 lom0_K = [0,0;1,1];
 
 % Solve
-[kpol, lom] = iterate_lom(p,grids,kpol0,lom0_K);
+[kpol,lom,results] = iterate_lom(p,grids,kpol0,lom0_K);
 [~,K_t,iz_t] = simulate(p,grids,kpol);
 
 % Compute conjectured path for capital stock
@@ -39,10 +39,13 @@ legend("K_t, simulated","K_t, approximated from LoM")
 set(gcf,'color','w');
 
 % Print results
-
+fprintf('Bad state: alpha=%f, beta=%f\n', lom(1,1), lom(2,1));
+fprintf('\tR-squared=%f\n', results{1}.r2);
+fprintf('Good state: alpha=%f, beta=%f\n', lom(1,2), lom(2,2));
+fprintf('\tR-squared=%f\n', results{2}.r2);
 
 % Iterate over law of motion
-function [kpol, lom_K] = iterate_lom(p,grids,kpol0,lom0_K)
+function [kpol, lom_K, sim_results] = iterate_lom(p,grids,kpol0,lom0_K)
     lom_K = lom0_K;
     
     for i=1:p.maxiters
@@ -64,7 +67,7 @@ function [kpol, lom_K] = iterate_lom(p,grids,kpol0,lom0_K)
         end
         
         % Update
-        lom_delta = 0.5;
+        lom_delta = 0.3;
         lom_K = lom_delta*lom1_K + (1-lom_delta)*lom_K;
     end
     error('No convergence')
@@ -84,7 +87,7 @@ function kpol = solve_policy(p,grids,kpol0,lom_K)
         if knorm < p.tol
             fprintf('\tConverged\n')
             return
-        elseif mod(i,100)==0
+        elseif mod(i,250)==0
         	fprintf('\tPolicy iteration = %d, norm=%f\n',i,knorm)
         end
     end
