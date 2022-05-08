@@ -1,0 +1,27 @@
+\documentclass{article}
+\title{ECON 411-3 PS3}
+\author{Brian Livingston \\ Rongxuan Zhang}
+\date{}
+
+\begin{document}
+\maketitle
+
+The household's problem is:
+$$
+v(k,l,z,K) = \max_{k'} u(lw(z,K)+(1+r(z,K)-\delta)k-k')+\beta E[v(k',l',z',K')|l,z]
+$$
+subject to $k'\geq 0$ and $\log K'=\alpha_1(z)+\alpha_2(z) \log K$, where we substituted in the budget constraint $c+k'=lw(z,K)+(1+r(z,K)-\delta)k$.
+The first order condition with respect to $k'$ and the envelope condition jointly imply the following Euler equation:
+$$
+u'(c) \geq \beta E[(1+r(z',K')-\delta)u'(c')|l,z]
+$$
+
+The rental rate of capital and the wage can be computed from the first order conditions of the firm's problem. These are:
+$$
+r(z,K) = \alpha z\left(\frac{K}{L}\right)^{\alpha-1}
+$$
+$$
+w(z,K) = (1-\alpha)z\left(\frac{K}{L}\right)^{\alpha}
+$$
+
+\end{document}

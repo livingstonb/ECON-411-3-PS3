@@ -37,6 +37,7 @@ ylabel("K")
 xlabel("t")
 legend("K_t, simulated","K_t, approximated from LoM")
 set(gcf,'color','w');
+savefig(gcf,'k_t.png')
 
 % Print results
 fprintf('Bad state: alpha=%f, beta=%f\n', lom(1,1), lom(2,1));
@@ -158,11 +159,11 @@ function [r, w] = compute_prices(p, K)
     klratio = K ./ reshape(p.L,[1,1,1,p.nz]);
 
     % r(K,z), dimension (1,nK,1,nz)
-    r = p.z * p.alpha .* klratio .^ (p.alpha-1);
+    r = reshape(p.z,[1,1,1,p.nz]) .* p.alpha .* klratio .^ (p.alpha-1);
     r = reshape(r, [1,p.nK,1,p.nz]);
     
     % w(K,z), dimension (1,nK,1,nz)
-    w = p.z * (1-p.alpha) .* klratio .^(-p.alpha);
+    w = reshape(p.z,[1,1,1,p.nz]) .* (1-p.alpha) .* klratio .^(-p.alpha);
     w = reshape(w, [1,p.nK,1,p.nz]);
 end
 

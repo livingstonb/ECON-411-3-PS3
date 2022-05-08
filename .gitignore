@@ -1,3 +1,8 @@
 *.asv
 git_ignored/
 *.DS_Store
+*.aux
+*.log
+*.pdf
+*.gz
+*.png
