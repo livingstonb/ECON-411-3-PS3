@@ -1,7 +1,7 @@
 
 classdef Parameters
     properties
-        nk = 101
+        nk = 101; %101
         kcurve = 7
         kmin = 0
         kmax = 100
@@ -30,9 +30,9 @@ classdef Parameters
         del_update = 0.4
                 
         % Simulation
-        sim_nHH = 10000;
-        sim_tburn = 100;
-        sim_T = 1000;
+        sim_nHH = 10000; % 10000
+        sim_tburn = 100; % 100
+        sim_T = 1000; % 1000
     end  
     
     methods

@@ -13,11 +13,14 @@ grids.K = linspace(p.Kmin,p.Kmax,p.nK)';
 kpol0 = 0.9 * grids.k .* ones([1,p.nK,p.nl,p.nz]);
 
 % Guess capital law of motion
+% lom0_K = [0.064261,0.072038;0.980861,0.979151];
 lom0_K = [0,0;1,1];
 
 % Solve
-[kpol,lom,results] = iterate_lom(p,grids,kpol0,lom0_K);
-[~,K_t,iz_t] = simulate(p,grids,kpol);
+% rngseed = 198959;
+rngseed = 1324;
+[kpol,lom,results] = iterate_lom(p,grids,kpol0,lom0_K,rngseed);
+[~,K_t,iz_t] = simulate(p,grids,kpol,rngseed);
 
 % Compute conjectured path for capital stock
 T = numel(K_t);
@@ -37,7 +40,7 @@ ylabel("K")
 xlabel("t")
 legend("K_t, simulated","K_t, approximated from LoM")
 set(gcf,'color','w');
-savefig(gcf,'k_t.png')
+saveas(gcf,'k_t.png')
 
 % Print results
 fprintf('Bad state: alpha=%f, beta=%f\n', lom(1,1), lom(2,1));
@@ -46,7 +49,7 @@ fprintf('Good state: alpha=%f, beta=%f\n', lom(1,2), lom(2,2));
 fprintf('\tR-squared=%f\n', results{2}.r2);
 
 % Iterate over law of motion
-function [kpol, lom_K, sim_results] = iterate_lom(p,grids,kpol0,lom0_K)
+function [kpol, lom_K, sim_results] = iterate_lom(p,grids,kpol0,lom0_K,rngseed)
     lom_K = lom0_K;
     
     for i=1:p.maxiters
@@ -54,7 +57,7 @@ function [kpol, lom_K, sim_results] = iterate_lom(p,grids,kpol0,lom0_K)
         kpol = solve_policy(p,grids,kpol0,lom_K);
 
         % Simulate
-        sim_results = simulate(p,grids,kpol);
+        sim_results = simulate(p,grids,kpol,rngseed);
         lom1_K = [sim_results{1}.b,sim_results{2}.b];
 
         % Check difference
@@ -163,12 +166,12 @@ function [r, w] = compute_prices(p, K)
     r = reshape(r, [1,p.nK,1,p.nz]);
     
     % w(K,z), dimension (1,nK,1,nz)
-    w = reshape(p.z,[1,1,1,p.nz]) .* (1-p.alpha) .* klratio .^(-p.alpha);
+    w = reshape(p.z,[1,1,1,p.nz]) .* (1-p.alpha) .* klratio .^(p.alpha);
     w = reshape(w, [1,p.nK,1,p.nz]);
 end
 
-function [regs,K_t,iz_t] = simulate(p,grids,kpol)
-    rng(1324);
+function [regs,K_t,iz_t] = simulate(p,grids,kpol,rngseed)
+    rng(rngseed);
 
     % Create policy interpolants
     kinterp = cell(p.nl,p.nz);
@@ -190,7 +193,7 @@ function [regs,K_t,iz_t] = simulate(p,grids,kpol)
     lrand = rand(p.sim_nHH,T);
     
     % Initial capital distribution
-    k = ones(p.sim_nHH,1) * 35;
+    k = ones(p.sim_nHH,1) * 45;
     
     % Initial employment status
     employed = rand(p.sim_nHH,1) < p.L(iz0);
@@ -225,7 +228,7 @@ function [regs,K_t,iz_t] = simulate(p,grids,kpol)
         
         % Draw idiosyncratic shocks conditional on aggregate transition
         [~,i_employed] = max(lrand(:,t)<=pi_l_trans{iz0,iz1}(i_employed,:),[],2);
-        employed = (i_employed==1);
+        employed = (i_employed==2);
         
         % Update current productivity
         iz0 = iz1;
