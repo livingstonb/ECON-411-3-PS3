@@ -13,12 +13,12 @@ grids.K = linspace(p.Kmin,p.Kmax,p.nK)';
 kpol0 = 0.9 * grids.k .* ones([1,p.nK,p.nl,p.nz]);
 
 % Guess capital law of motion
-% lom0_K = [0.064261,0.072038;0.980861,0.979151];
-lom0_K = [0,0;1,1];
+lom0_K = [0.127836,0.140178;0.963524,0.961568];
+% lom0_K = [0,0;1,1];
 
 % Solve
-% rngseed = 198959;
-rngseed = 1324;
+rngseed = 198959;
+% rngseed = 1324;
 [kpol,lom,results] = iterate_lom(p,grids,kpol0,lom0_K,rngseed);
 [~,K_t,iz_t] = simulate(p,grids,kpol,rngseed);
 
